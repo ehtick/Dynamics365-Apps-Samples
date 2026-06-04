@@ -395,6 +395,53 @@ var C1WebResourceNamespace = {
 			isError: false,
 			errorCode: null
 		};
+		var createAzureTranslatorHttpErrorObject = async function (response) {
+			var httpErrorObj = {
+				isError: true,
+				errorCode: Microsoft.Omnichannel.TranslationFramework.ErrorCodes.TRANSLATION_FAILED,
+				httpStatusCode: response.status,
+				errorMessage: "Received HTTP response error from Azure Translator with status code " + response.status
+			};
+			var responseBody = null;
+			try {
+				responseBody = await response.text();
+			} catch (err) {
+				consoleLogHelper(conversationId, "Failed to read Azure Translator error response body", err, true);
+				return httpErrorObj;
+			}
+			if (!responseBody) {
+				consoleLogHelper(conversationId, "Azure Translator error response body was empty", null, true);
+				return httpErrorObj;
+			}
+			var parsedResponseBody = null;
+			try {
+				parsedResponseBody = JSON.parse(responseBody);
+			} catch (err) {
+				consoleLogHelper(conversationId, "Failed to parse Azure Translator error response body", {
+					error: err,
+					responseBody
+				}, true);
+				return httpErrorObj;
+			}
+			var translatorError = parsedResponseBody && typeof parsedResponseBody === "object" ? parsedResponseBody.error : null;
+			if (!translatorError || typeof translatorError !== "object") {
+				consoleLogHelper(conversationId, "Azure Translator error response body did not contain expected error object", parsedResponseBody, true);
+				return httpErrorObj;
+			}
+			if (typeof translatorError.code === "number") {
+				httpErrorObj.translatorErrorCode = translatorError.code;
+			} else if (typeof translatorError.code === "string" && translatorError.code.trim().length > 0) {
+				httpErrorObj.translatorErrorCode = translatorError.code.trim();
+			} else {
+				consoleLogHelper(conversationId, "Azure Translator error response body did not contain a valid error code", parsedResponseBody, true);
+			}
+			if (typeof translatorError.message === "string" && translatorError.message.trim().length > 0) {
+				httpErrorObj.errorMessage += ": " + translatorError.message.trim();
+			} else {
+				consoleLogHelper(conversationId, "Azure Translator error response body did not contain a valid error message", parsedResponseBody, true);
+			}
+			return httpErrorObj;
+		};
 		consoleLogHelper(conversationId, "Trigger translateMessageInternalAzure", {
 			message,
 			messageSender,
@@ -434,6 +481,16 @@ var C1WebResourceNamespace = {
 				url,
 				bodyObj
 			})
+			if (!response.ok) {
+				var httpErrorObj = await createAzureTranslatorHttpErrorObject(response);
+				consoleLogHelper(conversationId, "Azure Translator returned unsuccessful HTTP response", httpErrorObj, true);
+				return {
+					translatedMessage: null,
+					destinationLanguage: null,
+					errorObject: httpErrorObj,
+					sourceLanguage: null
+				};
+			}
 			myJson = await response.json();
 		} catch (err) {
 			// add errorMessage and rawError to the errorObj so it can be logged internally for troubleshooting
