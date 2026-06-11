@@ -20,6 +20,7 @@ var C1WebResourceNamespace = {
 	useAzureTranslationApis: true,//please override it to false if planning to use google translation v2 api
 	messageBuffer: new Map(),
 	enableLanguageDetectionWithHistoryMessages: false,
+	azureTranslatorRegion: '', // Used to specify Ocp-Apim-Subscription-Region header for Azure Translator API calls. If global resource, leave as blank.
 	
 	//ISO 639-1 language code. It is supported by Azure Cognitive Translate API and Google V2 translation API
 	ISO6391LanguageCodeToOcLanguageCodeMap: {
@@ -469,18 +470,22 @@ var C1WebResourceNamespace = {
 			var bodyObj = [];
 			bodyObj[0] = new Object();
 			bodyObj[0].Text = message;
-			const response = await fetch(url, {
-				method: 'POST',
-				body: JSON.stringify(bodyObj), // string or object
-				headers: {
-					'Content-Type': 'application/json; charset=UTF-8',
-					'Ocp-Apim-Subscription-Key': C1WebResourceNamespace.bingTranslateApiClientSecret
-				}
-			});
+			const headers = {
+				'Content-Type': 'application/json; charset=UTF-8',
+				'Ocp-Apim-Subscription-Key': C1WebResourceNamespace.bingTranslateApiClientSecret
+		    };
+			if (typeof C1WebResourceNamespace.azureTranslatorRegion === 'string' && C1WebResourceNamespace.azureTranslatorRegion.trim() !== '') {
+				headers['Ocp-Apim-Subscription-Region'] = C1WebResourceNamespace.azureTranslatorRegion.trim();
+			}
 			consoleLogHelper(conversationId, "Making translation request to Azure", {
 				url,
 				bodyObj
-			})
+			});
+			const response = await fetch(url, {
+				method: 'POST',
+				body: JSON.stringify(bodyObj), // string or object
+				headers
+			});
 			if (!response.ok) {
 				var httpErrorObj = await createAzureTranslatorHttpErrorObject(response);
 				consoleLogHelper(conversationId, "Azure Translator returned unsuccessful HTTP response", httpErrorObj, true);
